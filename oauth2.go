@@ -52,10 +52,16 @@ type Tokens interface {
 	Refresh() string
 	Expired() bool
 	ExpiryTime() time.Time
+  ProviderName() string
 }
 
 type token struct {
 	oauth2.Token
+  providerName string
+}
+
+func (t *token) ProviderName() string {
+  return t.providerName
 }
 
 // Access returns the access token.
@@ -93,7 +99,7 @@ func Google(conf *oauth2.Config) martini.Handler {
 		TokenURL: "https://accounts.google.com/o/oauth2/token",
 	}
 
-	return NewOAuth2Provider(conf)
+	return NewOAuth2Provider(conf, "Google")
 }
 
 // Github returns a new Github OAuth 2.0 backend endpoint.
@@ -103,7 +109,7 @@ func Github(conf *oauth2.Config) martini.Handler {
 		TokenURL: "https://github.com/login/oauth/access_token",
 	}
 
-	return NewOAuth2Provider(conf)
+	return NewOAuth2Provider(conf, "Github")
 }
 
 // Facebook returns a new Facebook OAuth 2.0 backend endpoint.
@@ -113,7 +119,7 @@ func Facebook(conf *oauth2.Config) martini.Handler {
 		TokenURL: "https://graph.facebook.com/oauth/access_token",
 	}
 
-	return NewOAuth2Provider(conf)
+	return NewOAuth2Provider(conf, "Facebook")
 }
 
 // LinkedIn returns a new LinkedIn OAuth 2.0 backend endpoint.
@@ -123,11 +129,11 @@ func LinkedIn(conf *oauth2.Config) martini.Handler {
 		TokenURL: "https://www.linkedin.com/uas/oauth2/accessToken",
 	}
 
-	return NewOAuth2Provider(conf)
+	return NewOAuth2Provider(conf, "LinkedIn")
 }
 
 // NewOAuth2Provider returns a generic OAuth 2.0 backend endpoint.
-func NewOAuth2Provider(conf *oauth2.Config) martini.Handler {
+func NewOAuth2Provider(conf *oauth2.Config, providerName string) martini.Handler {
 
 	return func(s sessions.Session, c martini.Context, w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
@@ -140,7 +146,7 @@ func NewOAuth2Provider(conf *oauth2.Config) martini.Handler {
 				handleOAuth2Callback(conf, s, w, r)
 			}
 		}
-		tk := unmarshallToken(s)
+		tk := unmarshallToken(s, providerName)
 		if tk != nil {
 			// check if the access token is expired
 			if tk.Expired() && tk.Refresh() == "" {
@@ -159,7 +165,7 @@ func NewOAuth2Provider(conf *oauth2.Config) martini.Handler {
 // m.Get("/login-required", oauth2.LoginRequired, func() ... {})
 var LoginRequired = func() martini.Handler {
 	return func(s sessions.Session, c martini.Context, w http.ResponseWriter, r *http.Request) {
-		token := unmarshallToken(s)
+		token := unmarshallToken(s, "")
 		if token == nil || token.Expired() {
 			next := url.QueryEscape(r.URL.RequestURI())
 			http.Redirect(w, r, PathLogin+"?next="+next, codeRedirect)
@@ -203,14 +209,14 @@ func handleOAuth2Callback(f *oauth2.Config, s sessions.Session, w http.ResponseW
 	http.Redirect(w, r, next, codeRedirect)
 }
 
-func unmarshallToken(s sessions.Session) (t *token) {
+func unmarshallToken(s sessions.Session, providerName string) (t *token) {
 	if s.Get(keyToken) == nil {
 		return
 	}
 	data := s.Get(keyToken).([]byte)
 	var tk oauth2.Token
 	json.Unmarshal(data, &tk)
-	return &token{tk}
+	return &token{tk, providerName}
 }
 
 func extractPath(next string) string {
